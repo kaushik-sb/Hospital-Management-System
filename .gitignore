@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+instance/
+*.db
+Lib/
+Scripts/
+Include/
+pyvenv.cfg
+.env
+celerybeat-schedule
+node_modules/
