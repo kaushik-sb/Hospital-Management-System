@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Hospital Management System - V2
 **MAD 2 Project | Jan 2026 Term**
 
@@ -188,3 +189,7 @@ redis-server
 - All business logic is in Flask (Python)
 - Frontend uses Vue 3 CDN + Bootstrap 5 CDN only
 - Single `.js` file approach for CDN-based Vue (no CLI required)
+=======
+# hospital-management-system-app
+An application to systematically manage patient flow and other logistics of hospital management
+>>>>>>> 5901013dc1ae154fd766731c7fa285dd41c01788
