@@ -189,5 +189,3 @@ redis-server
 - Frontend uses Vue 3 CDN + Bootstrap 5 CDN only
 - Single `.js` file approach for CDN-based Vue (no CLI required)
 =======
-# hospital-management-system-app
-An application to systematically manage patient flow and other logistics of hospital management
