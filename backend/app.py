@@ -11,6 +11,7 @@ from routes.auth import auth_bp
 from routes.admin import admin_bp
 from routes.doctor import doctor_bp
 from routes.patient import patient_bp
+from routes.payment import payment_bp
 import os
 from datetime import timedelta
 
@@ -75,6 +76,7 @@ app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
 app.register_blueprint(doctor_bp, url_prefix='/api/doctor')
 app.register_blueprint(patient_bp, url_prefix='/api/patient')
+app.register_blueprint(payment_bp, url_prefix='/api/payment')
 
 # ── Database Initialization ────────────────────────────────────────────────────
 def create_tables_and_seed():

@@ -64,6 +64,7 @@ class Doctor(db.Model):
     phone = db.Column(db.String(20))
     qualification = db.Column(db.String(200))
     experience_years = db.Column(db.Integer, default=0)
+    consultation_fee = db.Column(db.Float, default=500.0)
     appointments = db.relationship('Appointment', backref='doctor', lazy=True)
     availabilities = db.relationship('DoctorAvailability', backref='doctor', lazy=True, cascade='all, delete-orphan')
 
@@ -81,6 +82,7 @@ class Doctor(db.Model):
             'experience_years': self.experience_years,
             'department': dept.to_dict() if dept else None,
             'is_active': self.user.is_active if self.user else True,
+            'consultation_fee': self.consultation_fee,
             'is_blacklisted': self.user.is_blacklisted if self.user else False,
             'blacklist_reason': self.user.blacklist_reason if self.user else ''
         }
@@ -184,4 +186,41 @@ class Treatment(db.Model):
             'notes': self.notes,
             'next_visit': self.next_visit.isoformat() if self.next_visit else None,
             'created_at': self.created_at.isoformat()
+        }
+
+
+class Payment(db.Model):
+    __tablename__ = 'payments'
+    id = db.Column(db.Integer, primary_key=True)
+    appointment_id = db.Column(db.Integer, db.ForeignKey('appointments.id'), nullable=False)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
+    doctor_id = db.Column(db.Integer, db.ForeignKey('doctors.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), default='Pending')
+    payment_method = db.Column(db.String(30))
+    card_last4 = db.Column(db.String(4))
+    transaction_id = db.Column(db.String(50))
+    paid_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    appointment = db.relationship('Appointment', backref=db.backref('payment', uselist=False))
+    patient_rel = db.relationship('Patient', backref='payments')
+    doctor_rel = db.relationship('Doctor', backref='payments')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'appointment_id': self.appointment_id,
+            'patient_id': self.patient_id,
+            'doctor_id': self.doctor_id,
+            'amount': self.amount,
+            'status': self.status,
+            'payment_method': self.payment_method,
+            'card_last4': self.card_last4,
+            'transaction_id': self.transaction_id,
+            'paid_at': self.paid_at.isoformat() if self.paid_at else None,
+            'created_at': self.created_at.isoformat(),
+            'doctor_name': self.doctor_rel.name if self.doctor_rel else None,
+            'patient_name': self.patient_rel.name if self.patient_rel else None,
+            'appointment_date': self.appointment.date.isoformat() if self.appointment else None
         }

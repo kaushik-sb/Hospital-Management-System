@@ -111,12 +111,14 @@ const SidebarComponent = {
         { path: '/admin/patients', icon: 'bi-people-fill', label: 'Patients' },
         { path: '/admin/appointments', icon: 'bi-calendar2-check-fill', label: 'Appointments' },
         { path: '/admin/departments', icon: 'bi-building-fill-check', label: 'Departments' },
+        { path: '/admin/revenue', icon: 'bi-graph-up-arrow', label: 'Revenue' },
       ];
       if (role === 'doctor') return [
         { path: '/doctor/dashboard', icon: 'bi-grid-1x2-fill', label: 'Dashboard' },
         { path: '/doctor/appointments', icon: 'bi-calendar2-check-fill', label: 'Appointments' },
         { path: '/doctor/patients', icon: 'bi-people-fill', label: 'My Patients' },
         { path: '/doctor/availability', icon: 'bi-clock-fill', label: 'Availability' },
+        { path: '/doctor/revenue', icon: 'bi-currency-rupee', label: 'Revenue & Fees' },
       ];
       if (role === 'patient') return [
         { path: '/patient/dashboard', icon: 'bi-grid-1x2-fill', label: 'Dashboard' },
@@ -1284,7 +1286,13 @@ const PatientAppointments = {
             </div>
           </div>
           <div class="afc-right">
-            <span :class="'badge ' + statusColor(a.status) + ' mb-2'">{{ a.status }}</span>
+            <span :class="'badge ' + statusColor(a.status) + ' mb-2 d-block'">{{ a.status }}</span>
+            <router-link
+              v-if="a.status==='Completed' || a.status==='Booked'"
+              :to="'/patient/payment/' + a.id"
+              :class="['btn btn-sm mb-1 d-block', a.payment?.status==='Paid' ? 'btn-success' : 'btn-warning fw-600']">
+              <i class="bi bi-credit-card me-1"></i>{{ a.payment?.status==='Paid' ? '✓ Paid' : 'Pay Now' }}
+            </router-link>
             <div v-if="a.status==='Booked'" class="d-flex gap-1 flex-column">
               <button class="btn btn-sm btn-outline-primary" @click="openReschedule(a)">Reschedule</button>
               <button class="btn btn-sm btn-outline-danger" @click="cancel(a.id)">Cancel</button>
@@ -1419,6 +1427,353 @@ const PatientProfile = {
   }
 };
 
+
+// ── Payment Portal ────────────────────────────────────────────────────────────
+const PaymentPortal = {
+  components: { AlertComponent },
+  template: `
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <AlertComponent :message="msg.text" :type="msg.type" />
+
+      <div v-if="success" class="payment-success">
+        <div class="success-icon"><i class="bi bi-check-circle-fill"></i></div>
+        <h4>Payment Successful!</h4>
+        <p class="text-muted">Transaction ID: <strong>{{ txnId }}</strong></p>
+        <p class="text-muted">Amount Paid: <strong>₹{{ amount }}</strong></p>
+        <router-link to="/patient/appointments" class="btn btn-primary mt-2">Back to Appointments</router-link>
+      </div>
+
+      <div v-else>
+        <div class="card-panel mb-4" v-if="details">
+          <h6 class="panel-title">Appointment Summary</h6>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted">Doctor</span>
+            <span class="fw-600">Dr. {{ details.doctor_name }}</span>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted">Date & Time</span>
+            <span class="fw-600">{{ details.appointment?.date }} at {{ details.appointment?.time }}</span>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted">Status</span>
+            <span class="badge bg-success">{{ details.appointment?.status }}</span>
+          </div>
+          <hr />
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="fw-600">Consultation Fee</span>
+            <span class="fw-800 text-primary" style="font-size:20px">₹{{ details.consultation_fee }}</span>
+          </div>
+          <div v-if="details.payment?.status === 'Paid'" class="alert alert-success mt-3 mb-0">
+            <i class="bi bi-check-circle me-2"></i>Already paid · TXN: {{ details.payment.transaction_id }}
+          </div>
+        </div>
+
+        <div class="card-panel" v-if="details && details.payment?.status !== 'Paid'">
+          <h6 class="panel-title">Payment Details</h6>
+          <div class="mb-3">
+            <label class="form-label">Payment Method *</label>
+            <div class="d-flex gap-2">
+              <button v-for="m in methods" :key="m.value"
+                :class="['method-btn', form.payment_method === m.value ? 'active' : '']"
+                @click="form.payment_method = m.value">
+                <i :class="'bi ' + m.icon"></i> {{ m.label }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="form.payment_method === 'Card'">
+            <div class="dummy-card mb-4">
+              <div class="dummy-card-chip"><i class="bi bi-cpu"></i></div>
+              <div class="dummy-card-number">{{ displayCard }}</div>
+              <div class="d-flex justify-content-between">
+                <div><small>Card Holder</small><div>{{ authStore.profile?.name || 'YOUR NAME' }}</div></div>
+                <div><small>Expires</small><div>{{ form.expiry || 'MM/YY' }}</div></div>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Card Number *</label>
+                <input v-model="form.card_number" @input="formatCard"
+                  class="form-control" placeholder="1234 5678 9012 3456"
+                  maxlength="19" required />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Expiry Date *</label>
+                <input v-model="form.expiry" class="form-control"
+                  placeholder="MM/YY" maxlength="5" required />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">CVV *</label>
+                <input v-model="form.cvv" type="password" class="form-control"
+                  placeholder="***" maxlength="3" required />
+              </div>
+            </div>
+          </div>
+
+          <div v-if="form.payment_method === 'UPI'" class="mt-2">
+            <label class="form-label">UPI ID *</label>
+            <input v-model="form.upi_id" class="form-control"
+              placeholder="yourname@upi" required />
+            <div class="form-text">Enter any UPI ID for demo purposes</div>
+          </div>
+
+          <div v-if="form.payment_method === 'NetBanking'" class="mt-2">
+            <label class="form-label">Select Bank *</label>
+            <select v-model="form.bank" class="form-select">
+              <option value="">Choose your bank</option>
+              <option v-for="b in banks" :key="b">{{ b }}</option>
+            </select>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+            <div>
+              <div class="text-muted small">Total Amount</div>
+              <div class="fw-800 text-primary" style="font-size:22px">₹{{ details?.consultation_fee }}</div>
+            </div>
+            <button class="btn btn-primary btn-lg px-4" @click="pay" :disabled="paying || !form.payment_method">
+              <span v-if="paying" class="spinner-border spinner-border-sm me-2"></span>
+              <i v-else class="bi bi-lock-fill me-2"></i>Pay Now
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  `,
+  setup() {
+    const route = VueRouter.useRoute();
+    const details = ref(null);
+    const form = reactive({ payment_method:'', card_number:'', expiry:'', cvv:'', upi_id:'', bank:'' });
+    const msg = reactive({ text:'', type:'danger' });
+    const paying = ref(false);
+    const success = ref(false);
+    const txnId = ref('');
+    const amount = ref(0);
+    const methods = [
+      { value:'Card', label:'Card', icon:'bi-credit-card' },
+      { value:'UPI', label:'UPI', icon:'bi-phone' },
+      { value:'NetBanking', label:'Net Banking', icon:'bi-bank' }
+    ];
+    const banks = ['State Bank of India','HDFC Bank','ICICI Bank','Axis Bank','Kotak Bank','Punjab National Bank'];
+
+    const displayCard = computed(() => {
+      const n = form.card_number.replace(/\s/g,'');
+      if (!n) return '**** **** **** ****';
+      return (n + '****************').slice(0,16).replace(/(\d{4})/g,'$1 ').trim();
+    });
+
+    function formatCard() {
+      let v = form.card_number.replace(/\D/g,'').slice(0,16);
+      form.card_number = v.replace(/(\d{4})/g,'$1 ').trim();
+    }
+
+    onMounted(async () => {
+      const aptId = route.params.id;
+      try {
+        details.value = await api('GET', `/payment/appointment/${aptId}`, null, authStore.token);
+      } catch(e) { msg.text = e.message; }
+    });
+
+    async function pay() {
+      if (!form.payment_method) { msg.text = 'Select a payment method'; return; }
+      paying.value = true;
+      try {
+        const res = await api('POST', '/payment/pay', {
+          appointment_id: parseInt(route.params.id),
+          payment_method: form.payment_method,
+          card_number: form.card_number,
+          expiry: form.expiry,
+          cvv: form.cvv
+        }, authStore.token);
+        txnId.value = res.transaction_id;
+        amount.value = res.amount;
+        success.value = true;
+      } catch(e) { msg.text = e.message; msg.type = 'danger'; }
+      finally { paying.value = false; }
+    }
+
+    return { details, form, msg, paying, success, txnId, amount, methods, banks, displayCard, formatCard, pay, authStore };
+  }
+};
+
+// ── Doctor Fee Setting ────────────────────────────────────────────────────────
+const DoctorRevenue = {
+  components: { AlertComponent },
+  template: `
+  <div>
+    <AlertComponent :message="msg.text" :type="msg.type" />
+    <div class="row g-4 mb-4">
+      <div class="col-md-4">
+        <div class="stat-card" style="--accent-color:#2e7d32">
+          <div class="stat-icon"><i class="bi bi-currency-rupee"></i></div>
+          <div class="stat-info">
+            <div class="stat-value">₹{{ data.total_revenue?.toLocaleString() || 0 }}</div>
+            <div class="stat-label">Total Revenue</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stat-card" style="--accent-color:#1a6fc4">
+          <div class="stat-icon"><i class="bi bi-receipt"></i></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ data.total_payments || 0 }}</div>
+            <div class="stat-label">Total Payments</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card-panel">
+          <h6 class="panel-title">Set Consultation Fee</h6>
+          <div class="input-group">
+            <span class="input-group-text">₹</span>
+            <input v-model="fee" type="number" class="form-control" min="0" placeholder="e.g. 500" />
+            <button class="btn btn-primary" @click="setFee">Update</button>
+          </div>
+          <small class="text-muted">Current fee: ₹{{ data.consultation_fee || 0 }}</small>
+        </div>
+      </div>
+    </div>
+    <div class="card-panel">
+      <h6 class="panel-title">Payment History</h6>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr><th>Date</th><th>Patient</th><th>Amount</th><th>Method</th><th>Transaction ID</th></tr></thead>
+          <tbody>
+            <tr v-if="!data.payments?.length"><td colspan="5" class="text-center text-muted py-4">No payments yet</td></tr>
+            <tr v-for="p in data.payments" :key="p.id">
+              <td>{{ p.paid_at?.split('T')[0] }}</td>
+              <td>{{ p.patient_name }}</td>
+              <td class="fw-600 text-success">₹{{ p.amount }}</td>
+              <td>{{ p.payment_method }}</td>
+              <td><small class="text-muted">{{ p.transaction_id }}</small></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  `,
+  setup() {
+    const data = reactive({ total_revenue:0, total_payments:0, consultation_fee:0, payments:[] });
+    const fee = ref('');
+    const msg = reactive({ text:'', type:'success' });
+
+    onMounted(async () => {
+      const res = await api('GET', '/payment/doctor-revenue', null, authStore.token);
+      Object.assign(data, res);
+      fee.value = res.consultation_fee;
+    });
+
+    async function setFee() {
+      try {
+        const res = await api('PUT', '/payment/set-fee', { consultation_fee: parseFloat(fee.value) }, authStore.token);
+        data.consultation_fee = res.consultation_fee;
+        msg.text = 'Fee updated successfully!'; msg.type = 'success';
+      } catch(e) { msg.text = e.message; msg.type = 'danger'; }
+    }
+
+    return { data, fee, msg, setFee };
+  }
+};
+
+// ── Admin Revenue Analytics ───────────────────────────────────────────────────
+const AdminRevenue = {
+  template: `
+  <div>
+    <div class="row g-4 mb-4">
+      <div class="col-md-4">
+        <div class="stat-card" style="--accent-color:#2e7d32">
+          <div class="stat-icon"><i class="bi bi-currency-rupee"></i></div>
+          <div class="stat-info">
+            <div class="stat-value">₹{{ data.total_revenue?.toLocaleString() || 0 }}</div>
+            <div class="stat-label">Total Revenue</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stat-card" style="--accent-color:#1a6fc4">
+          <div class="stat-icon"><i class="bi bi-receipt-cutoff"></i></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ data.total_payments || 0 }}</div>
+            <div class="stat-label">Total Transactions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="card-panel">
+          <h6 class="panel-title">Revenue by Doctor</h6>
+          <canvas ref="doctorChart" height="250"></canvas>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card-panel">
+          <h6 class="panel-title">Revenue by Department</h6>
+          <canvas ref="deptChart" height="250"></canvas>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="card-panel">
+          <h6 class="panel-title">Doctor Revenue Breakdown</h6>
+          <table class="table align-middle">
+            <thead><tr><th>Doctor</th><th>Department</th><th>Patients Paid</th><th>Total Revenue</th></tr></thead>
+            <tbody>
+              <tr v-if="!data.by_doctor?.length"><td colspan="4" class="text-center text-muted py-4">No revenue data yet</td></tr>
+              <tr v-for="d in data.by_doctor" :key="d.doctor_id">
+                <td class="fw-600">Dr. {{ d.doctor_name }}</td>
+                <td>{{ d.department }}</td>
+                <td>{{ d.count }}</td>
+                <td class="fw-600 text-success">₹{{ d.total.toLocaleString() }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  `,
+  setup() {
+    const data = reactive({ total_revenue:0, total_payments:0, by_doctor:[], by_department:[] });
+    const doctorChart = ref(null);
+    const deptChart = ref(null);
+
+    onMounted(async () => {
+      const res = await api('GET', '/payment/admin/revenue', null, authStore.token);
+      Object.assign(data, res);
+
+      if (doctorChart.value && res.by_doctor?.length) {
+        new Chart(doctorChart.value, {
+          type: 'bar',
+          data: {
+            labels: res.by_doctor.map(d => 'Dr. ' + d.doctor_name),
+            datasets: [{ label: 'Revenue (₹)', data: res.by_doctor.map(d => d.total),
+              backgroundColor: '#1a6fc4', borderRadius: 6 }]
+          },
+          options: { responsive:true, plugins:{ legend:{ display:false } },
+            scales:{ y:{ beginAtZero:true } } }
+        });
+      }
+
+      if (deptChart.value && res.by_department?.length) {
+        new Chart(deptChart.value, {
+          type: 'doughnut',
+          data: {
+            labels: res.by_department.map(d => d.department),
+            datasets: [{ data: res.by_department.map(d => d.total),
+              backgroundColor: ['#1a6fc4','#00bcd4','#2e7d32','#f9a825','#e53935','#9c27b0','#ff5722','#607d8b'],
+              borderWidth: 0 }]
+          },
+          options: { responsive:true, plugins:{ legend:{ position:'bottom' } } }
+        });
+      }
+    });
+
+    return { data, doctorChart, deptChart };
+  }
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ROUTER
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1445,6 +1800,9 @@ const router = createRouter({
         { path: 'patient/doctors', component: PatientDoctors, meta: { title: 'Find Doctors', role: 'patient' } },
         { path: 'patient/appointments', component: PatientAppointments, meta: { title: 'My Appointments', role: 'patient' } },
         { path: 'patient/profile', component: PatientProfile, meta: { title: 'My Profile', role: 'patient' } },
+        { path: 'patient/payment/:id', component: PaymentPortal, meta: { title: 'Payment', role: 'patient' } },
+        { path: 'doctor/revenue', component: DoctorRevenue, meta: { title: 'Revenue & Fees', role: 'doctor' } },
+        { path: 'admin/revenue', component: AdminRevenue, meta: { title: 'Revenue Analytics', role: 'admin' } },
       ]
     }
   ]
@@ -1567,6 +1925,18 @@ const appStyles = `
 /* Profile */
 .profile-header { display:flex; align-items:center; gap:16px; }
 .profile-avatar { width:64px; height:64px; background:linear-gradient(135deg,#1a6fc4,#00bcd4); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:24px; font-weight:700; flex-shrink:0; }
+
+
+/* Payment Portal */
+.payment-success { text-align:center; padding:40px 20px; }
+.success-icon { font-size:64px; color:#2e7d32; margin-bottom:16px; }
+.method-btn { display:flex; align-items:center; gap:6px; padding:10px 18px; border:2px solid var(--border); border-radius:10px; background:#fff; cursor:pointer; font-size:14px; font-weight:500; transition:all .2s; }
+.method-btn.active { border-color:#1a6fc4; background:#e8f0fe; color:#1a6fc4; }
+.method-btn:hover { border-color:#1a6fc4; }
+.dummy-card { background:linear-gradient(135deg,#0f4c81,#1a6fc4); color:white; border-radius:16px; padding:24px; position:relative; overflow:hidden; }
+.dummy-card::before { content:''; position:absolute; top:-30px; right:-30px; width:120px; height:120px; background:rgba(255,255,255,0.1); border-radius:50%; }
+.dummy-card-chip { font-size:28px; margin-bottom:16px; opacity:0.9; }
+.dummy-card-number { font-size:18px; letter-spacing:3px; margin-bottom:20px; font-family:monospace; }
 
 @media (max-width:768px) {
   .sidebar { transform:translateX(-100%); }
