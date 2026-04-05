@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Hospital Management System - V2
 **MAD 2 Project | Jan 2026 Term**
 
@@ -192,4 +191,3 @@ redis-server
 =======
 # hospital-management-system-app
 An application to systematically manage patient flow and other logistics of hospital management
->>>>>>> 5901013dc1ae154fd766731c7fa285dd41c01788
