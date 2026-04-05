@@ -12,7 +12,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from app import app
-from models.models import db, User, Doctor, Patient, Department, DoctorAvailability
+from models.models import db, User, Doctor, Patient, Department, DoctorAvailability, Appointment
 from datetime import date, timedelta
 
 with app.app_context():
@@ -149,6 +149,41 @@ with app.app_context():
         )
         db.session.add(patient)
         print(f"Created patient: {p['name']} (login: {p['username']} / {p['password']})")
+
+    # ── Today's appointment for testing daily reminder ─────────────────────────
+    from datetime import date
+
+    patient1 = Patient.query.filter_by(name='Amit Kumar').first()
+    doctor1 = Doctor.query.filter_by(name='Arjun Sharma').first()
+
+    if patient1 and doctor1:
+        # Add today's availability for doctor1 if not exists
+        today = date.today()
+        if not DoctorAvailability.query.filter_by(doctor_id=doctor1.id, date=today).first():
+            db.session.add(DoctorAvailability(
+                doctor_id=doctor1.id,
+                date=today,
+                start_time='09:00',
+                end_time='17:00',
+                max_appointments=10
+            ))
+
+        # Add today's appointment if not exists
+        existing = Appointment.query.filter_by(
+            patient_id=patient1.id,
+            doctor_id=doctor1.id,
+            date=today
+        ).first()
+        if not existing:
+            db.session.add(Appointment(
+                patient_id=patient1.id,
+                doctor_id=doctor1.id,
+                date=today,
+                time='10:00',
+                status='Booked',
+                reason='Regular checkup'
+            ))
+            print(f"Created today's appointment for {patient1.name} with Dr. {doctor1.name}")
 
     db.session.commit()
     print("\n✅ Demo data seeded successfully!")

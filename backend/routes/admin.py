@@ -130,8 +130,11 @@ def get_patients():
     query = Patient.query.join(User)
     if search:
         query = query.filter(
-            (Patient.name.ilike(f'%{search}%')) | (Patient.phone.ilike(f'%{search}%')) |
-            (User.email.ilike(f'%{search}%')))
+            (Patient.name.ilike(f'%{search}%')) |
+            (Patient.phone.ilike(f'%{search}%')) |
+            (User.email.ilike(f'%{search}%')) |
+            (Patient.id == int(search) if search.isdigit() else False)
+        )
     return jsonify([p.to_dict() for p in query.all()]), 200
 
 @admin_bp.route('/patients/<int:pat_id>', methods=['PUT'])

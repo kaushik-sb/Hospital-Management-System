@@ -207,10 +207,11 @@ def reschedule_appointment(apt_id):
     return jsonify(apt.to_dict()), 200
 
 
-@patient_bp.route('/export-csv', methods=['GET'])
+@patient_bp.route('/export-csv', methods=['GET', 'POST'])
 @patient_required
 def export_csv():
-    from celery_tasks import export_patient_csv
     patient = get_current_patient()
+    from celery_tasks import export_patient_csv
     export_patient_csv.delay(patient.id, patient.user.email)
     return jsonify({'message': 'Export started. You will receive an email when ready.'}), 200
+

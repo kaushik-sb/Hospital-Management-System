@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_caching import Cache
@@ -40,27 +43,29 @@ app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'norep
 # ── Extensions ─────────────────────────────────────────────────────────────────
 db.init_app(app)
 jwt = JWTManager(app)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app)
 mail = Mail(app)
+
+# ── CORS Preflight Fix ─────────────────────────────────────────────────────────
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 # Cache with fallback to SimpleCache if Redis is unavailable
 try:
     cache = Cache(app)
-    cache.get('test')  # Test connection
+    cache.get('test')
 except Exception:
     app.config['CACHE_TYPE'] = 'SimpleCache'
     cache = Cache(app)
 
 # ── Celery ─────────────────────────────────────────────────────────────────────
 try:
-    from celery_tasks import make_celery, set_celery, send_daily_reminders, send_monthly_reports, export_patient_csv
+    from celery_tasks import make_celery
     celery = make_celery(app)
-    set_celery(celery)
-
-    # Register tasks with celery
-    celery.task(name='celery_tasks.send_daily_reminders')(send_daily_reminders)
-    celery.task(name='celery_tasks.send_monthly_reports')(send_monthly_reports)
-    celery.task(name='celery_tasks.export_patient_csv')(export_patient_csv)
 except Exception as e:
     print(f"Celery setup warning: {e}")
     celery = None
@@ -75,13 +80,11 @@ app.register_blueprint(patient_bp, url_prefix='/api/patient')
 def create_tables_and_seed():
     db.create_all()
 
-    # Seed admin if not present
     if not User.query.filter_by(role='admin').first():
         admin = User(username='admin', email='admin@hospital.com', role='admin')
         admin.set_password('Admin@123')
         db.session.add(admin)
 
-    # Seed departments
     departments = [
         ('Cardiology', 'Heart and cardiovascular system'),
         ('Neurology', 'Brain, spine, and nervous system'),

@@ -85,7 +85,7 @@ redis-server
 # Open http://localhost:8080
 ```
 
-### 6. (Optional) Start Celery for Background Jobs
+### 6. Start Celery for Background Jobs
 ```bash
 # Terminal 3: Celery worker
 ./run_celery.sh
