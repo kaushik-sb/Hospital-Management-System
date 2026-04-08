@@ -1,0 +1,848 @@
+openapi: 3.0.3
+info:
+  title: MediCare Hospital Management System API
+  description: REST API for the Hospital Management System built with Flask and Vue.js
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:5000/api
+    description: Local development server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    RegisterRequest:
+      type: object
+      required: [username, email, password, name]
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        name:
+          type: string
+        phone:
+          type: string
+        gender:
+          type: string
+          enum: [Male, Female, Other]
+        blood_group:
+          type: string
+
+    Doctor:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        specialization:
+          type: string
+        phone:
+          type: string
+        qualification:
+          type: string
+        experience_years:
+          type: integer
+        department:
+          type: object
+        is_active:
+          type: boolean
+        is_blacklisted:
+          type: boolean
+
+    Patient:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        gender:
+          type: string
+        blood_group:
+          type: string
+        dob:
+          type: string
+          format: date
+        is_active:
+          type: boolean
+
+    Appointment:
+      type: object
+      properties:
+        id:
+          type: integer
+        patient_id:
+          type: integer
+        doctor_id:
+          type: integer
+        patient_name:
+          type: string
+        doctor_name:
+          type: string
+        date:
+          type: string
+          format: date
+        time:
+          type: string
+        status:
+          type: string
+          enum: [Booked, Completed, Cancelled]
+        reason:
+          type: string
+        treatment:
+          type: object
+
+    Treatment:
+      type: object
+      properties:
+        id:
+          type: integer
+        appointment_id:
+          type: integer
+        diagnosis:
+          type: string
+        prescription:
+          type: string
+        notes:
+          type: string
+        next_visit:
+          type: string
+          format: date
+
+    Department:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        doctor_count:
+          type: integer
+
+    Availability:
+      type: object
+      properties:
+        id:
+          type: integer
+        doctor_id:
+          type: integer
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+        end_time:
+          type: string
+        max_appointments:
+          type: integer
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  # ── AUTH ────────────────────────────────────────────────────────────────────
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate user and return JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                  profile:
+                    type: object
+        '401':
+          description: Invalid credentials
+        '403':
+          description: Account deactivated or blacklisted
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register new patient account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registration successful
+        '400':
+          description: Validation error or duplicate username/email
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user and profile
+      responses:
+        '200':
+          description: User details returned
+        '401':
+          description: Unauthorized
+
+  # ── ADMIN ───────────────────────────────────────────────────────────────────
+
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Get dashboard statistics
+      responses:
+        '200':
+          description: Stats including total doctors, patients, appointments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_doctors:
+                    type: integer
+                  total_patients:
+                    type: integer
+                  total_appointments:
+                    type: integer
+                  booked:
+                    type: integer
+                  completed:
+                    type: integer
+                  cancelled:
+                    type: integer
+
+  /admin/doctors:
+    get:
+      tags: [Admin]
+      summary: List all doctors with optional search
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search by name or specialization
+      responses:
+        '200':
+          description: List of doctors
+    post:
+      tags: [Admin]
+      summary: Add a new doctor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password, name]
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                name:
+                  type: string
+                specialization:
+                  type: string
+                department_id:
+                  type: integer
+                phone:
+                  type: string
+                qualification:
+                  type: string
+                experience_years:
+                  type: integer
+      responses:
+        '201':
+          description: Doctor created
+
+  /admin/doctors/{id}:
+    put:
+      tags: [Admin]
+      summary: Update doctor details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Doctor updated
+    delete:
+      tags: [Admin]
+      summary: Deactivate a doctor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Doctor deactivated
+
+  /admin/doctors/{id}/activate:
+    put:
+      tags: [Admin]
+      summary: Reactivate a deactivated doctor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Doctor activated
+
+  /admin/doctors/{id}/blacklist:
+    put:
+      tags: [Admin]
+      summary: Blacklist a doctor with reason
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Doctor blacklisted and future appointments cancelled
+
+  /admin/doctors/{id}/unblacklist:
+    put:
+      tags: [Admin]
+      summary: Remove doctor from blacklist
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Doctor removed from blacklist
+
+  /admin/patients:
+    get:
+      tags: [Admin]
+      summary: List all patients with optional search
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search by name, phone, email or ID
+      responses:
+        '200':
+          description: List of patients
+
+  /admin/patients/{id}:
+    put:
+      tags: [Admin]
+      summary: Update patient information
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Patient updated
+
+  /admin/patients/{id}/deactivate:
+    put:
+      tags: [Admin]
+      summary: Deactivate a patient account
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Patient deactivated
+
+  /admin/patients/{id}/activate:
+    put:
+      tags: [Admin]
+      summary: Reactivate a patient account
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Patient activated
+
+  /admin/patients/{id}/blacklist:
+    put:
+      tags: [Admin]
+      summary: Blacklist a patient with reason
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Patient blacklisted
+
+  /admin/patients/{id}/unblacklist:
+    put:
+      tags: [Admin]
+      summary: Remove patient from blacklist
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Patient removed from blacklist
+
+  /admin/appointments:
+    get:
+      tags: [Admin]
+      summary: List all appointments with optional status filter
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [Booked, Completed, Cancelled]
+      responses:
+        '200':
+          description: List of appointments
+
+  /admin/departments:
+    get:
+      tags: [Admin]
+      summary: List all departments
+      responses:
+        '200':
+          description: List of departments
+    post:
+      tags: [Admin]
+      summary: Add a new department
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Department created
+
+  /admin/departments/{id}:
+    put:
+      tags: [Admin]
+      summary: Update department details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Department updated
+    delete:
+      tags: [Admin]
+      summary: Delete a department
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Department deleted
+
+  # ── DOCTOR ──────────────────────────────────────────────────────────────────
+
+  /doctor/dashboard:
+    get:
+      tags: [Doctor]
+      summary: Get doctor dashboard data
+      responses:
+        '200':
+          description: Today count, upcoming appointments, patient count
+
+  /doctor/appointments:
+    get:
+      tags: [Doctor]
+      summary: List doctor's appointments
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [Booked, Completed, Cancelled]
+      responses:
+        '200':
+          description: List of appointments
+
+  /doctor/appointments/{id}/complete:
+    put:
+      tags: [Doctor]
+      summary: Mark appointment as completed (only for today or past dates)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Appointment marked completed
+        '400':
+          description: Cannot complete a future appointment
+
+  /doctor/appointments/{id}/cancel:
+    put:
+      tags: [Doctor]
+      summary: Cancel an appointment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Appointment cancelled
+
+  /doctor/appointments/{id}/treatment:
+    post:
+      tags: [Doctor]
+      summary: Add or update treatment for an appointment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                diagnosis:
+                  type: string
+                prescription:
+                  type: string
+                notes:
+                  type: string
+                next_visit:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Treatment saved and appointment marked completed
+        '400':
+          description: Cannot add treatment for future appointment
+
+  /doctor/patients:
+    get:
+      tags: [Doctor]
+      summary: List all patients who have had appointments with this doctor
+      responses:
+        '200':
+          description: List of patients
+
+  /doctor/patients/{id}/history:
+    get:
+      tags: [Doctor]
+      summary: Get full appointment and treatment history for a patient
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of appointments with treatments
+
+  /doctor/availability:
+    get:
+      tags: [Doctor]
+      summary: Get doctor's availability for next 7 days
+      responses:
+        '200':
+          description: List of availability slots
+    post:
+      tags: [Doctor]
+      summary: Set or update availability for a date
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, start_time, end_time]
+              properties:
+                date:
+                  type: string
+                  format: date
+                start_time:
+                  type: string
+                end_time:
+                  type: string
+                max_appointments:
+                  type: integer
+                  default: 10
+      responses:
+        '200':
+          description: Availability updated
+
+  /doctor/availability/{id}:
+    delete:
+      tags: [Doctor]
+      summary: Remove an availability slot
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Availability slot deleted
+
+  # ── PATIENT ─────────────────────────────────────────────────────────────────
+
+  /patient/dashboard:
+    get:
+      tags: [Patient]
+      summary: Get patient dashboard data
+      responses:
+        '200':
+          description: Upcoming appointments, recent history, departments
+
+  /patient/profile:
+    put:
+      tags: [Patient]
+      summary: Update patient profile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phone:
+                  type: string
+                dob:
+                  type: string
+                  format: date
+                gender:
+                  type: string
+                blood_group:
+                  type: string
+                address:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated
+
+  /patient/doctors:
+    get:
+      tags: [Patient]
+      summary: Search doctors by name and department
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search by doctor name
+        - in: query
+          name: department
+          schema:
+            type: string
+          description: Filter by department name
+      responses:
+        '200':
+          description: List of doctors with availability
+
+  /patient/departments:
+    get:
+      tags: [Patient]
+      summary: List all departments
+      responses:
+        '200':
+          description: List of departments
+
+  /patient/appointments:
+    get:
+      tags: [Patient]
+      summary: List patient's appointments
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [Booked, Completed, Cancelled]
+      responses:
+        '200':
+          description: List of appointments with treatment details
+    post:
+      tags: [Patient]
+      summary: Book a new appointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doctor_id, date, time]
+              properties:
+                doctor_id:
+                  type: integer
+                date:
+                  type: string
+                  format: date
+                time:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        '201':
+          description: Appointment booked
+        '400':
+          description: Time outside availability window
+        '409':
+          description: Time slot already booked
+
+  /patient/appointments/{id}/cancel:
+    put:
+      tags: [Patient]
+      summary: Cancel a booked appointment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Appointment cancelled
+        '400':
+          description: Cannot cancel a completed appointment
+
+  /patient/appointments/{id}/reschedule:
+    put:
+      tags: [Patient]
+      summary: Reschedule a booked appointment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, time]
+              properties:
+                date:
+                  type: string
+                  format: date
+                time:
+                  type: string
+      responses:
+        '200':
+          description: Appointment rescheduled
+        '409':
+          description: New time slot already booked
+
+  /patient/export-csv:
+    post:
+      tags: [Patient]
+      summary: Trigger async CSV export of full treatment history via email
+      responses:
+        '200':
+          description: Export job queued, email will be sent when ready
